@@ -1,0 +1,10 @@
+[generators]
+cmake
+
+[requires]
+libcurl/7.61.1@bincrafters/stable
+log4cplus/2.0.2@bincrafters/stable
+zlib/1.2.11@conan/stable
+
+[imports]
+bin, *.dll -> ./bin @ keep_path=False

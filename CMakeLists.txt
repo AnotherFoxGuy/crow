@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.8)
 cmake_policy(SET CMP0048 NEW)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 project(crow VERSION 0.0.6)
+
+#######################
+# Setup deps with PMM #
+#######################
+
+include(${CMAKE_SOURCE_DIR}/cmake/pmm.cmake)
+pmm(CONAN)
 
 ##############################
 # check for required headers #
@@ -74,32 +83,6 @@ configure_file(src/crow_config.hpp.in
 # dependencies #
 ################
 
-option(CROW_EXTERNAL_ZLIB_PROJECT "the path to zlib" OFF)
-if(CROW_EXTERNAL_ZLIB_PROJECT)
-    add_subdirectory(${CROW_EXTERNAL_ZLIB_PROJECT})
-    set(ZLIB_INCLUDE_DIRS ${CROW_EXTERNAL_ZLIB_PROJECT})
-    set(ZLIB_LIBRARIES zlibstatic)
-else()
-    find_package(ZLIB REQUIRED ${CROW_EXTERNAL_ZLIB_PROJECT})
-endif()
-
-option(CROW_EXTERNAL_CURL_PROJECT "the path to curl" OFF)
-if(CROW_EXTERNAL_CURL_PROJECT)
-    set(BUILD_TESTING OFF CACHE INTERNAL "")
-    set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
-    set(CURL_STATICLIB ON CACHE INTERNAL "")
-    set(BUILD_CURL_EXE OFF CACHE INTERNAL "")
-    set(CURL_CA_PATH_SET OFF CACHE INTERNAL "")
-    set(CMAKE_USE_OPENSSL ON CACHE INTERNAL "")
-    set(HTTP_ONLY ON CACHE INTERNAL "")
-    add_definitions(-DCURL_STATICLIB)
-    add_subdirectory(${CROW_EXTERNAL_CURL_PROJECT})
-    set(CURL_INCLUDE_DIR ${CROW_EXTERNAL_CURL_PROJECT}/include)
-    set(CURL_LIBRARIES libcurl)
-else()
-    find_package(CURL)
-endif()
-
 find_package(Threads)
 
 ###########
@@ -108,8 +91,9 @@ find_package(Threads)
 
 add_library(crow src/crow.cpp src/crow_utilities.cpp src/crow_utilities.hpp)
 set_target_properties(crow PROPERTIES CXX_STANDARD 11)
-target_include_directories(crow PUBLIC include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CURL_INCLUDE_DIR} ${ZLIB_INCLUDE_DIRS})
-target_link_libraries(crow ${CURL_LIBRARIES} ${CMAKE_DL_LIBS} ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES})
+target_include_directories(crow PUBLIC include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(crow PRIVATE CONAN_PKG::libcurl CONAN_PKG::zlib)
+
 
 #################
 # documentation #
@@ -135,7 +119,7 @@ endif()
 
 include(CTest)
 option(CROW_BUILD_TESTING "build tests" ON)
-option(CROW_BUILD_LOG4CPLUS "build log4cplus example" OFF)
+option(CROW_BUILD_LOG4CPLUS "build log4cplus example" ON)
 if(CROW_BUILD_TESTING AND (BUILD_TESTING OR CROW_EXTERNAL_CURL_PROJECT))
     enable_testing()
 
@@ -159,25 +143,14 @@ if(CROW_BUILD_TESTING AND (BUILD_TESTING OR CROW_EXTERNAL_CURL_PROJECT))
     target_link_libraries(livetest crow)
     add_test(NAME livetest COMMAND livetest)
 
-    if(CROW_BUILD_LOG4CPLUS)
-        include(ExternalProject)
-        ExternalProject_Add(log4cplus_project
-                URL https://github.com/log4cplus/log4cplus/releases/download/REL_2_0_1/log4cplus-2.0.1.zip
-                INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/log4cplus
-                CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/log4cplus -DBUILD_SHARED_LIBS=OFF -DLOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME=OFF -DUNICODE=OFF -DWITH_UNIT_TESTS=OFF
-                BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/log4cplus/lib/${CMAKE_STATIC_LIBRARY_PREFIX}log4cplus${CMAKE_STATIC_LIBRARY_SUFFIX}
-                )
-        ExternalProject_Get_Property(log4cplus_project install_dir)
-        add_library(log4cplus STATIC IMPORTED)
-        set_target_properties(log4cplus PROPERTIES IMPORTED_LOCATION ${install_dir}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}log4cplus${CMAKE_STATIC_LIBRARY_SUFFIX})
-        add_dependencies(log4cplus log4cplus_project)
+	if(CROW_BUILD_LOG4CPLUS)
+		add_executable(log4cplus_example examples/log4cplus/example.cpp include/crow/integrations/loggers.hpp include/crow/integrations/log4cplus.hpp)
+		set_target_properties(log4cplus_example PROPERTIES CXX_STANDARD 11)
+		target_include_directories(log4cplus_example PUBLIC include ${install_dir}/include)
+		target_link_libraries(log4cplus_example PRIVATE crow CONAN_PKG::log4cplus )
+		add_test(NAME log4cplus_example COMMAND log4cplus_example)
+	endif()
 
-        add_executable(log4cplus_example examples/log4cplus/example.cpp include/crow/integrations/loggers.hpp include/crow/integrations/log4cplus.hpp)
-        set_target_properties(log4cplus_example PROPERTIES CXX_STANDARD 11)
-        target_include_directories(log4cplus_example PUBLIC include ${install_dir}/include)
-        target_link_libraries(log4cplus_example log4cplus crow)
-        add_test(NAME log4cplus_example COMMAND log4cplus_example)
-    endif()
 endif()
 
 ############
